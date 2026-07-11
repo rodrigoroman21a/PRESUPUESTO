@@ -78,17 +78,36 @@ small, .stCaptionContainer, [data-testid="stCaptionContainer"],
     color: var(--dash-text) !important;
 }
 
-.stButton > button, [data-testid="stFormSubmitButton"] button {
+.stButton > button,
+[data-testid="stFormSubmitButton"] button,
+.stDownloadButton > button,
+[data-testid="stDownloadButton"] button {
     background: linear-gradient(135deg, #00D1B2, #34C3FF) !important;
+    background-color: #00D1B2 !important;
     color: #06161C !important;
     border: 0 !important;
     border-radius: 8px !important;
     font-weight: 700 !important;
+    opacity: 1 !important;
 }
 
-.stButton > button:hover, [data-testid="stFormSubmitButton"] button:hover {
+.stButton > button:hover,
+[data-testid="stFormSubmitButton"] button:hover,
+.stDownloadButton > button:hover,
+[data-testid="stDownloadButton"] button:hover {
     filter: brightness(1.08) !important;
     color: #06161C !important;
+}
+
+.stDownloadButton > button:disabled,
+[data-testid="stDownloadButton"] button:disabled,
+.stDownloadButton button[disabled],
+[data-testid="stDownloadButton"] button[disabled] {
+    background: linear-gradient(135deg, rgba(0, 209, 178, 0.55), rgba(52, 195, 255, 0.55)) !important;
+    background-color: rgba(0, 209, 178, 0.55) !important;
+    color: #06161C !important;
+    opacity: 0.85 !important;
+    border: 1px solid rgba(155, 190, 190, 0.45) !important;
 }
 
 [data-testid="stAlert"] {
@@ -152,13 +171,15 @@ small, .stCaptionContainer, [data-testid="stCaptionContainer"],
     background-color: transparent !important;
 }
 
-/* Inputs dentro de tablas/manuales: fondo oscuro original y letras claras */
+/* Inputs dentro de tablas/manuales: no crear franja negra, solo letras claras */
 [data-testid="stDataEditor"] input,
 [data-testid="stDataEditor"] textarea,
 [data-testid="stDataEditor"] select {
-    background-color: rgba(17, 40, 49, 0.95) !important;
+    background: transparent !important;
+    background-color: transparent !important;
     color: #E9FBFF !important;
-    caret-color: #E9FBFF !important;
+    -webkit-text-fill-color: #E9FBFF !important;
+    caret-color: #00D1B2 !important;
 }
 
 input, textarea, select, [data-baseweb="select"] > div {
@@ -3605,6 +3626,87 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+
+# ==========================================================
+# CORRECCIÓN VISUAL PARA ESCRITURA EN DATA_EDITOR
+# Mantiene la tabla oscura y solo fuerza letras visibles.
+# También elimina la franja negra de la celda activa haciéndola transparente.
+# ==========================================================
+st.markdown("""
+<style>
+/* Celda activa / editor interno del st.data_editor */
+div[data-testid="stDataEditor"] input,
+div[data-testid="stDataEditor"] textarea,
+div[data-testid="stDataEditor"] [contenteditable="true"],
+div[data-testid="stDataEditor"] [data-baseweb="input"] input,
+div[data-testid="stDataEditor"] [data-baseweb="textarea"] textarea,
+div[data-testid="stDataEditor"] .gdg-input,
+div[data-testid="stDataEditor"] .gdg-input input,
+div[data-testid="stDataEditor"] .gdg-input textarea,
+div[data-testid="stDataEditor"] .dvn-textarea,
+div[data-testid="stDataEditor"] .dvn-textarea textarea,
+.gdg-input,
+.gdg-input input,
+.gdg-input textarea,
+.dvn-textarea,
+.dvn-textarea textarea,
+.glide-data-grid-overlay-editor,
+.glide-data-grid-overlay-editor input,
+.glide-data-grid-overlay-editor textarea {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #E9FBFF !important;
+    -webkit-text-fill-color: #E9FBFF !important;
+    caret-color: #00D1B2 !important;
+    opacity: 1 !important;
+    border-color: #00D1B2 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+/* Si el navegador/Glide dibuja una caja propia encima de la celda */
+div[class*="gdg"] input,
+div[class*="gdg"] textarea,
+div[class*="dvn"] input,
+div[class*="dvn"] textarea {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #E9FBFF !important;
+    -webkit-text-fill-color: #E9FBFF !important;
+    caret-color: #00D1B2 !important;
+}
+
+/* Selectbox dentro del editor */
+div[data-testid="stDataEditor"] [data-baseweb="select"] > div,
+div[data-testid="stDataEditor"] [data-baseweb="select"] span,
+div[data-testid="stDataEditor"] [data-baseweb="select"] div {
+    background-color: rgba(17, 40, 49, 0.95) !important;
+    color: #E9FBFF !important;
+    -webkit-text-fill-color: #E9FBFF !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==========================================================
+# ÚLTIMO REFUERZO CSS: CELDA ACTIVA SIN FRANJA NEGRA
+# ==========================================================
+st.markdown("""
+<style>
+.gdg-input, .gdg-input input, .gdg-input textarea,
+.dvn-textarea, .dvn-textarea textarea,
+.glide-data-grid-overlay-editor, .glide-data-grid-overlay-editor input, .glide-data-grid-overlay-editor textarea,
+div[data-testid="stDataEditor"] input, div[data-testid="stDataEditor"] textarea {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #E9FBFF !important;
+    -webkit-text-fill-color: #E9FBFF !important;
+    caret-color: #00D1B2 !important;
+    box-shadow: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 def tarjeta_kpi(titulo, valor, subtitulo=""):
     st.markdown(

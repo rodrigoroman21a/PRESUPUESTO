@@ -127,61 +127,44 @@ small, .stCaptionContainer, [data-testid="stCaptionContainer"],
     padding: 12px !important;
 }
 
-/* TABLAS Y EDITORES: NO CAMBIAR FONDO, SOLO LETRAS */
+/* TABLAS Y EDITORES: usar estilo estable y legible */
 [data-testid="stDataFrame"],
 [data-testid="stDataEditor"] {
-    background: transparent !important;
     border: 1px solid rgba(155, 190, 190, 0.75) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
     box-shadow: 0 0 18px rgba(0, 209, 178, 0.10) !important;
 }
 
+/* No forzar fondo de la grilla. Streamlit/Glide lo maneja mejor por defecto. */
 [data-testid="stDataFrame"] *,
 [data-testid="stDataEditor"] * {
-    color: #E9FBFF !important;
     opacity: 1 !important;
 }
 
-[data-testid="stDataFrame"] div[role="grid"],
-[data-testid="stDataEditor"] div[role="grid"],
-[data-testid="stDataFrame"] div[role="row"],
-[data-testid="stDataEditor"] div[role="row"],
-[data-testid="stDataFrame"] div[role="gridcell"],
-[data-testid="stDataEditor"] div[role="gridcell"] {
-    color: #E9FBFF !important;
-    border-color: rgba(155, 190, 190, 0.22) !important;
-}
-
-[data-testid="stDataFrame"] div[role="columnheader"],
-[data-testid="stDataEditor"] div[role="columnheader"] {
-    color: #E9FBFF !important;
-    font-weight: 800 !important;
-    border-color: rgba(155, 190, 190, 0.28) !important;
-}
-
-/* No forzar fondo blanco en canvas/grid */
-.gdg,
-.dvn-scroller,
-.dvn-scroll-inner,
-.dvn-underlay,
-[data-testid="stDataFrame"] canvas,
-[data-testid="stDataEditor"] canvas {
-    background: transparent !important;
-    background-color: transparent !important;
-}
-
-/* Inputs dentro de tablas/manuales: no crear franja negra, solo letras claras */
+/* Cuando se escribe en una celda, debe verse claro. */
 [data-testid="stDataEditor"] input,
 [data-testid="stDataEditor"] textarea,
-[data-testid="stDataEditor"] select {
-    background: transparent !important;
-    background-color: transparent !important;
-    color: #E9FBFF !important;
-    -webkit-text-fill-color: #E9FBFF !important;
-    caret-color: #00D1B2 !important;
+[data-testid="stDataEditor"] [contenteditable="true"],
+[data-testid="stDataEditor"] [data-baseweb="input"] input,
+[data-testid="stDataEditor"] [data-baseweb="textarea"] textarea,
+.gdg-input,
+.gdg-input input,
+.gdg-input textarea,
+.dvn-textarea,
+.dvn-textarea textarea,
+.glide-data-grid-overlay-editor,
+.glide-data-grid-overlay-editor input,
+.glide-data-grid-overlay-editor textarea {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
+    caret-color: #0F172A !important;
+    opacity: 1 !important;
+    text-shadow: none !important;
 }
 
+/* Dropdowns normales de Streamlit, fuera de la grilla. */
 input, textarea, select, [data-baseweb="select"] > div {
     background-color: rgba(17, 40, 49, 0.95) !important;
     color: var(--dash-text) !important;
@@ -2184,8 +2167,31 @@ sistemas_soldadura = {"SOLDADURA / CONSUMIBLES"} if not soldadura.empty else set
 equipos = sorted(equipos_componentes.union(equipos_pm).union(equipos_correctivos).union(equipos_soldadura))
 sistemas = sorted(sistemas_componentes.union(sistemas_pm).union(sistemas_correctivos).union(sistemas_soldadura))
 
-equipo_sel = st.sidebar.multiselect("Equipo", equipos, default=equipos)
-sistema_sel = st.sidebar.multiselect("Sistema", sistemas, default=sistemas)
+
+def resolver_opcion_todos(seleccion, universo):
+    seleccion_limpia = [limpiar_texto(x) for x in seleccion if limpiar_texto(x) != ""]
+    seleccion_upper = {x.upper() for x in seleccion_limpia}
+
+    if not seleccion_limpia or "TODOS" in seleccion_upper:
+        return list(universo)
+
+    return [x for x in seleccion_limpia if x.upper() != "TODOS"]
+
+
+equipo_sel_visual = st.sidebar.multiselect(
+    "Equipo",
+    ["TODOS"] + equipos,
+    default=["TODOS"]
+)
+
+sistema_sel_visual = st.sidebar.multiselect(
+    "Sistema",
+    ["TODOS"] + sistemas,
+    default=["TODOS"]
+)
+
+equipo_sel = resolver_opcion_todos(equipo_sel_visual, equipos)
+sistema_sel = resolver_opcion_todos(sistema_sel_visual, sistemas)
 
 st.sidebar.header("Pendientes por definir")
 
@@ -2241,6 +2247,38 @@ def aplicar_filtro_definicion(df):
 
     elif filtro_definicion == "Solo definidos":
         df = df[df["POR_DEFINIR"] == False].copy()
+
+    return df
+
+
+def aplicar_filtro_equipo_sistema(df):
+    df = df.copy()
+
+    if df.empty:
+        return df
+
+    # El filtro lateral debe aplicar al presupuesto final completo,
+    # incluyendo líneas manuales ya guardadas.
+    # Si el usuario tiene seleccionado TODOS, no se filtra por esa dimensión.
+    try:
+        equipo_todos_activo = "TODOS" in {limpiar_texto(x).upper() for x in equipo_sel_visual}
+    except Exception:
+        equipo_todos_activo = False
+
+    try:
+        sistema_todos_activo = "TODOS" in {limpiar_texto(x).upper() for x in sistema_sel_visual}
+    except Exception:
+        sistema_todos_activo = False
+
+    if not equipo_todos_activo and "EQUIPO" in df.columns and len(equipo_sel) > 0:
+        equipos_filtro = {limpiar_texto(x).upper() for x in equipo_sel}
+        equipos_df = df["EQUIPO"].apply(limpiar_texto).str.upper()
+        df = df[equipos_df.isin(equipos_filtro)].copy()
+
+    if not sistema_todos_activo and "SISTEMA" in df.columns and len(sistema_sel) > 0:
+        sistemas_filtro = {limpiar_texto(x).upper() for x in sistema_sel}
+        sistemas_df = df["SISTEMA"].apply(limpiar_texto).str.upper()
+        df = df[sistemas_df.isin(sistemas_filtro)].copy()
 
     return df
 
@@ -2650,6 +2688,17 @@ lineas_default = generar_lineas_presupuesto(eventos_base)
 if lineas_default.empty:
     st.warning("No se generaron líneas de presupuesto.")
 
+# La tabla superior debe obedecer al mismo criterio presupuestal que el detalle inferior:
+# año/mes de FECHA_PRESUPUESTO, equipo, sistema y costo mayor a cero.
+# Antes, cuando no encontraba líneas del mes, hacía un fallback por AÑO_CAMBIO y
+# mostraba componentes arriba aunque abajo el presupuesto estaba vacío.
+lineas_default = aplicar_fechas_presupuesto_guardadas(lineas_default)
+lineas_default = aplicar_filtro_equipo_sistema(lineas_default)
+
+if not lineas_default.empty and "COSTO_ESTIMADO" in lineas_default.columns:
+    lineas_default["COSTO_ESTIMADO"] = lineas_default["COSTO_ESTIMADO"].apply(limpiar_monto)
+    lineas_default = lineas_default[lineas_default["COSTO_ESTIMADO"] > 0].copy()
+
 lineas_default_filtradas = lineas_default[
     lineas_default["AÑO_PRESUPUESTO"] == anio
 ].copy() if not lineas_default.empty else pd.DataFrame()
@@ -2659,16 +2708,16 @@ if mes != 0 and not lineas_default_filtradas.empty:
         lineas_default_filtradas["MES_PRESUPUESTO"] == mes
     ].copy()
 
+lineas_default_filtradas = aplicar_filtro_definicion(lineas_default_filtradas) if not lineas_default_filtradas.empty else lineas_default_filtradas
+
 ids_eventos = lineas_default_filtradas["ID_EVENTO"].dropna().unique() if not lineas_default_filtradas.empty else []
 
-eventos_a_editar = eventos_base[
-    eventos_base["ID_EVENTO"].isin(ids_eventos)
-].copy()
-
-if eventos_a_editar.empty:
+if len(ids_eventos) > 0:
     eventos_a_editar = eventos_base[
-        eventos_base["AÑO_CAMBIO"] == anio
+        eventos_base["ID_EVENTO"].isin(ids_eventos)
     ].copy()
+else:
+    eventos_a_editar = eventos_base.iloc[0:0].copy()
 
 eventos_a_editar = aplicar_filtro_definicion(eventos_a_editar)
 
@@ -2903,6 +2952,13 @@ def normalizar_trabajos_manuales(df, generar_id=False):
             df[col] = df[col].apply(limpiar_texto)
 
     df["EQUIPO"] = df["EQUIPO"].str.upper()
+
+    # Si el usuario eligió OTRO / MANUAL en EQUIPO, tomar el valor escrito en EQUIPO_MANUAL.
+    if "EQUIPO_MANUAL" in df.columns:
+        df["EQUIPO_MANUAL"] = df["EQUIPO_MANUAL"].apply(limpiar_texto).str.upper()
+        mask_equipo_manual = df["EQUIPO"].apply(limpiar_texto).str.upper() == OPCION_EQUIPO_MANUAL
+        df.loc[mask_equipo_manual, "EQUIPO"] = df.loc[mask_equipo_manual, "EQUIPO_MANUAL"]
+
     df["SISTEMA"] = df["SISTEMA"].replace("", "SISTEMA POR DEFINIR")
     df["ID_COMPONENTE"] = df["ID_COMPONENTE"].replace("", "PROGRAMADO")
     df["CODIGO_COMPONENTE"] = df["CODIGO_COMPONENTE"].replace("", "PROGRAMADO")
@@ -2945,6 +3001,9 @@ def normalizar_trabajos_manuales(df, generar_id=False):
     )
     df["NOMBRE_COMPONENTE"] = df["NOMBRE_COMPONENTE"].replace("", "TRABAJO MANUAL")
 
+    # Completar clase/descripcion. Si eligió OTRA / MANUAL, usar la descripción manual para el detalle.
+    df = completar_desc_clase_manual(df, aplicar_manual_final=True)
+
     # Completar clase de costo si el usuario no la coloca.
     mask_sin_clase = df["CLASE_COSTO_FINAL"].apply(limpiar_texto) == ""
     if mask_sin_clase.any():
@@ -2952,15 +3011,20 @@ def normalizar_trabajos_manuales(df, generar_id=False):
             rep_new = limpiar_texto(row.get("REP_NEW_LINEA", "")).upper()
             tipo = limpiar_texto(row.get("TIPO_REPARACION", "")).upper()
 
+            desc_actual = limpiar_texto(row.get("DESC_CLASE_COSTO_FINAL", ""))
+
             if rep_new == "REP" and tipo == "INTERNA":
                 df.loc[idx, "CLASE_COSTO_FINAL"] = limpiar_codigo(clase_manual_rep_int)
-                df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_rep_int)
+                if desc_actual == "":
+                    df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_rep_int)
             elif rep_new == "REP":
                 df.loc[idx, "CLASE_COSTO_FINAL"] = limpiar_codigo(clase_manual_rep_ext)
-                df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_rep_ext)
+                if desc_actual == "":
+                    df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_rep_ext)
             else:
                 df.loc[idx, "CLASE_COSTO_FINAL"] = limpiar_codigo(clase_manual_comp_nuevo)
-                df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_comp_nuevo)
+                if desc_actual == "":
+                    df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = limpiar_texto(desc_manual_comp_nuevo)
 
     # Filtrar solo filas válidas para pasarlas al detalle.
     df = df[
@@ -3094,12 +3158,249 @@ def duplicar_linea_detalle_al_manual(fila_detalle):
 
 st.subheader("Agregar trabajos manuales al presupuesto")
 st.caption(
-    "Llena la línea. Elige el SISTEMA desde la lista. "
-    "La línea se integrará como PROGRAMADO/PREVENTIVO, no como MANUAL."
+    "Llena la línea. EQUIPO y SISTEMA están amarrados al filtro lateral actual. "
+    "Si la clase no está en la lista, elige OTRA / MANUAL y escribe la descripción manual."
 )
 
 COLUMNAS_MANUAL_EDITOR = COLUMNAS_PRESUPUESTO_VISIBLE.copy()
 
+# Opciones para carga manual cuando el equipo o la clase no existen en las listas.
+OPCION_EQUIPO_MANUAL = "OTRO / MANUAL"
+OPCION_DESC_CLASE_MANUAL = "OTRA / MANUAL"
+
+# Columna auxiliar solo para equipo manual. No se exporta en el presupuesto final.
+if "EQUIPO_MANUAL" not in COLUMNAS_MANUAL_EDITOR:
+    try:
+        idx_equipo_manual = COLUMNAS_MANUAL_EDITOR.index("EQUIPO") + 1
+    except Exception:
+        idx_equipo_manual = 1
+    COLUMNAS_MANUAL_EDITOR.insert(idx_equipo_manual, "EQUIPO_MANUAL")
+
+# Columna auxiliar solo para la carga manual. No se exporta en el presupuesto final.
+if "DESC_CLASE_COSTO_MANUAL" not in COLUMNAS_MANUAL_EDITOR:
+    try:
+        idx_desc_manual = COLUMNAS_MANUAL_EDITOR.index("DESC_CLASE_COSTO_FINAL") + 1
+    except Exception:
+        idx_desc_manual = len(COLUMNAS_MANUAL_EDITOR)
+    COLUMNAS_MANUAL_EDITOR.insert(idx_desc_manual, "DESC_CLASE_COSTO_MANUAL")
+
+
+# Catálogo de clases de costo para selección manual.
+# El número de clase manda; la descripción se completa automáticamente.
+def construir_catalogo_clases_costo_manual():
+    pares = []
+
+    def agregar_par(clase, desc):
+        clase_limpia = limpiar_codigo(clase)
+        desc_limpia = limpiar_texto(desc).upper()
+        if clase_limpia != "":
+            pares.append((clase_limpia, desc_limpia))
+
+    if "costos" in globals() and costos is not None and not costos.empty:
+        for clase_col, desc_col in [
+            ("CLASE_COSTO_COMPONENTE_NUEVO", "DESC_CLASE_COSTO_COMPONENTE_NUEVO"),
+            ("CLASE_COSTO_MATERIAL_REP_INTERNA", "DESC_CLASE_COSTO_MATERIAL_REP_INTERNA"),
+            ("CLASE_COSTO_REP_EXTERNA", "DESC_CLASE_COSTO_REP_EXTERNA"),
+            ("CLASE_COSTO_REP_INTERNA", "DESC_CLASE_COSTO_REP_INTERNA"),
+            ("CLASE_COSTO_PLACAS_PERF_ESTRUC", "DESC_CLASE_COSTO_PLACAS_PERF_ESTRUC"),
+            ("CLASE_COSTO_SOLDADURAS_FUNDENTES_ACCES", "DESC_CLASE_COSTO_SOLDADURAS_FUNDENTES_ACCES"),
+        ]:
+            if clase_col in costos.columns:
+                for _, r in costos[[c for c in [clase_col, desc_col] if c in costos.columns]].iterrows():
+                    agregar_par(r.get(clase_col, ""), r.get(desc_col, ""))
+
+    if "correctivos" in globals() and correctivos is not None and not correctivos.empty:
+        if "CLASE_COSTE" in correctivos.columns:
+            desc_col = "DESCRIP_CLASES_COSTE" if "DESCRIP_CLASES_COSTE" in correctivos.columns else ""
+            for _, r in correctivos.iterrows():
+                agregar_par(r.get("CLASE_COSTE", ""), r.get(desc_col, "") if desc_col else "")
+
+    if "soldadura" in globals() and soldadura is not None and not soldadura.empty:
+        if "CLASE_COSTE" in soldadura.columns:
+            desc_col = "DESCRIP_CLASES_COSTE" if "DESCRIP_CLASES_COSTE" in soldadura.columns else "DENOM_CLASE_COSTE"
+            for _, r in soldadura.iterrows():
+                agregar_par(r.get("CLASE_COSTE", ""), r.get(desc_col, ""))
+
+    # Clases manuales internas como respaldo.
+    for clase, desc in [
+        (clase_manual_comp_nuevo, desc_manual_comp_nuevo),
+        (clase_manual_mat_rep_int, desc_manual_mat_rep_int),
+        (clase_manual_rep_ext, desc_manual_rep_ext),
+        (clase_manual_rep_int, desc_manual_rep_int),
+    ]:
+        agregar_par(clase, desc)
+
+    # Elegir una sola descripción por clase; si hay varias, usar la primera no vacía.
+    mapa = {}
+    for clase, desc in pares:
+        if clase not in mapa or mapa[clase] == "":
+            mapa[clase] = desc
+
+    opciones = [""] + sorted(mapa.keys())
+    return opciones, mapa
+
+
+opciones_clase_costo_manual, desc_clase_por_codigo_manual = construir_catalogo_clases_costo_manual()
+
+# Para la carga manual, el usuario elegirá la DESCRIPCIÓN de la clase de costo.
+# Luego el sistema completará automáticamente el número de clase.
+codigo_por_desc_clase_manual = {}
+for codigo_clase, desc_clase in desc_clase_por_codigo_manual.items():
+    desc_limpia = limpiar_texto(desc_clase).upper()
+    codigo_limpio = limpiar_codigo(codigo_clase)
+    if desc_limpia != "" and codigo_limpio != "" and desc_limpia not in codigo_por_desc_clase_manual:
+        codigo_por_desc_clase_manual[desc_limpia] = codigo_limpio
+
+opciones_desc_clase_costo_manual = ["", OPCION_DESC_CLASE_MANUAL] + sorted(codigo_por_desc_clase_manual.keys())
+
+
+def opciones_equipo_manual_actuales():
+    """La carga manual queda amarrada al filtro actual de equipo,
+    pero también permite OTRO / MANUAL para equipos que no estén en la lista.
+    """
+    try:
+        origen = equipo_sel if len(equipo_sel) > 0 else equipos
+    except Exception:
+        origen = []
+
+    opciones = []
+    for e in origen:
+        equipo_txt = limpiar_texto(e).upper()
+        if equipo_txt != "":
+            opciones.append(equipo_txt)
+
+    return [""] + sorted(set(opciones)) + [OPCION_EQUIPO_MANUAL]
+
+
+def opciones_sistema_manual_actuales():
+    """La carga manual debe estar amarrada al filtro actual de sistema.
+    No se permite cargar como PM/CORRECTIVO/SOLDADURA desde la tabla manual.
+    """
+    excluir = {"", "PM MECANICO", "CORRECTIVO / BACKLOG", "SOLDADURA / CONSUMIBLES"}
+
+    try:
+        origen = sistema_sel if len(sistema_sel) > 0 else sistemas
+    except Exception:
+        origen = []
+
+    opciones = []
+    for s in origen:
+        sistema_txt = limpiar_texto(s).upper()
+        if sistema_txt not in excluir:
+            opciones.append(sistema_txt)
+
+    if not opciones:
+        try:
+            for s in sistemas:
+                sistema_txt = limpiar_texto(s).upper()
+                if sistema_txt not in excluir:
+                    opciones.append(sistema_txt)
+        except Exception:
+            pass
+
+    return [""] + sorted(set(opciones))
+
+
+def valor_unico_no_vacio(lista):
+    valores = [limpiar_texto(x) for x in lista if limpiar_texto(x) != ""]
+    return valores[0] if len(valores) == 1 else ""
+
+
+def completar_filtro_manual(df):
+    """Completa equipo/sistema/flota desde el filtro cuando el filtro tiene un solo valor.
+    Además permite OTRO / MANUAL para equipos que no existan en la lista.
+    """
+    df = df.copy()
+
+    for col in ["EQUIPO", "EQUIPO_MANUAL", "FLOTA", "SISTEMA"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    equipo_default = valor_unico_no_vacio([x for x in opciones_equipo_manual_actuales() if x != OPCION_EQUIPO_MANUAL])
+    sistema_default = valor_unico_no_vacio(opciones_sistema_manual_actuales())
+
+    df["EQUIPO"] = df["EQUIPO"].apply(limpiar_texto).str.upper()
+    df["EQUIPO_MANUAL"] = df["EQUIPO_MANUAL"].apply(limpiar_texto).str.upper()
+    df["SISTEMA"] = df["SISTEMA"].apply(limpiar_texto).str.upper()
+
+    if equipo_default != "":
+        mask_vacio = df["EQUIPO"].apply(limpiar_texto) == ""
+        df.loc[mask_vacio, "EQUIPO"] = equipo_default
+
+    if sistema_default != "":
+        df.loc[df["SISTEMA"].apply(limpiar_texto) == "", "SISTEMA"] = sistema_default
+
+    # Si la línea se carga con un equipo fuera del filtro actual, limpiarla para obligar selección correcta.
+    # Se permite OTRO / MANUAL para que el usuario escriba un equipo nuevo en EQUIPO_MANUAL.
+    equipos_validos = {limpiar_texto(x).upper() for x in opciones_equipo_manual_actuales() if limpiar_texto(x) != ""}
+    equipos_validos.add(OPCION_EQUIPO_MANUAL)
+    if equipos_validos:
+        mask_fuera_equipo = ~df["EQUIPO"].isin(equipos_validos)
+        df.loc[mask_fuera_equipo, "EQUIPO"] = equipo_default if equipo_default != "" else ""
+
+    sistemas_validos = {limpiar_texto(x).upper() for x in opciones_sistema_manual_actuales() if limpiar_texto(x) != ""}
+    if sistemas_validos:
+        mask_fuera_sistema = ~df["SISTEMA"].isin(sistemas_validos)
+        df.loc[mask_fuera_sistema, "SISTEMA"] = sistema_default if sistema_default != "" else ""
+
+    def flota_auto(row):
+        flota_actual = limpiar_texto(row.get("FLOTA", ""))
+        equipo_actual = limpiar_texto(row.get("EQUIPO", "")).upper()
+        equipo_manual = limpiar_texto(row.get("EQUIPO_MANUAL", "")).upper()
+
+        equipo_para_flota = equipo_manual if equipo_actual == OPCION_EQUIPO_MANUAL else equipo_actual
+        flota_calc = obtener_flota_por_pala(equipo_para_flota)
+        if flota_calc != "SIN_FLOTA":
+            return flota_calc
+        return flota_actual
+
+    df["FLOTA"] = df.apply(flota_auto, axis=1)
+
+    return df
+
+
+def completar_desc_clase_manual(df, aplicar_manual_final=False):
+    df = df.copy()
+
+    if "CLASE_COSTO_FINAL" not in df.columns:
+        df["CLASE_COSTO_FINAL"] = ""
+    if "DESC_CLASE_COSTO_FINAL" not in df.columns:
+        df["DESC_CLASE_COSTO_FINAL"] = ""
+    if "DESC_CLASE_COSTO_MANUAL" not in df.columns:
+        df["DESC_CLASE_COSTO_MANUAL"] = ""
+
+    df["CLASE_COSTO_FINAL"] = df["CLASE_COSTO_FINAL"].apply(limpiar_codigo)
+    df["DESC_CLASE_COSTO_FINAL"] = df["DESC_CLASE_COSTO_FINAL"].apply(limpiar_texto).str.upper()
+    df["DESC_CLASE_COSTO_MANUAL"] = df["DESC_CLASE_COSTO_MANUAL"].apply(limpiar_texto).str.upper()
+
+    for idx, row in df.iterrows():
+        desc = limpiar_texto(row.get("DESC_CLASE_COSTO_FINAL", "")).upper()
+        desc_manual = limpiar_texto(row.get("DESC_CLASE_COSTO_MANUAL", "")).upper()
+        clase = limpiar_codigo(row.get("CLASE_COSTO_FINAL", ""))
+
+        # Si el usuario no encuentra la descripción en la lista, marca OTRA / MANUAL
+        # y escribe la descripción en DESC_CLASE_COSTO_MANUAL.
+        if desc == OPCION_DESC_CLASE_MANUAL:
+            if aplicar_manual_final:
+                # En el detalle/exportación debe quedar la descripción manual real.
+                df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = desc_manual
+            else:
+                # En el editor mantenemos la opción de la lista para que no se pierda.
+                df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = OPCION_DESC_CLASE_MANUAL
+            continue
+
+        # Prioridad: si el usuario eligió una descripción del catálogo, completar el número.
+        if desc in codigo_por_desc_clase_manual:
+            clase_final = codigo_por_desc_clase_manual.get(desc, "")
+            df.loc[idx, "CLASE_COSTO_FINAL"] = clase_final
+            df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = desc_clase_por_codigo_manual.get(clase_final, desc)
+            continue
+
+        # Respaldo: si viene el número de clase desde datos anteriores, completar descripción.
+        if clase in desc_clase_por_codigo_manual:
+            df.loc[idx, "DESC_CLASE_COSTO_FINAL"] = desc_clase_por_codigo_manual.get(clase, "")
+
+    return df
 
 def base_editor_manual_vacia():
     df = pd.DataFrame(columns=COLUMNAS_MANUAL_EDITOR)
@@ -3108,6 +3409,7 @@ def base_editor_manual_vacia():
         df.loc[0, "ORIGEN_PRESUPUESTO"] = "PROGRAMADO"
     if "TIPO_MANTENIMIENTO" in df.columns:
         df.loc[0, "TIPO_MANTENIMIENTO"] = "PROGRAMADO / PREVENTIVO"
+    df = completar_filtro_manual(df)
     return df
 
 
@@ -3119,6 +3421,7 @@ def recalcular_mes_editor_manual(df):
             df[col] = ""
 
     df = df[COLUMNAS_MANUAL_EDITOR].copy()
+    df = completar_filtro_manual(df)
 
     if df.empty:
         return base_editor_manual_vacia()
@@ -3138,6 +3441,10 @@ def recalcular_mes_editor_manual(df):
     df["MES_PRESUPUESTO_NOMBRE"] = df["FECHA_PRESUPUESTO"].apply(
         lambda x: f"{nombre_mes(pd.to_datetime(x).month)}-{str(pd.to_datetime(x).year)[-2:]}" if pd.notna(x) else ""
     )
+
+    # Completar clase de costo desde la descripción seleccionada.
+    # Si eligió OTRA / MANUAL, conservar esa opción en el editor.
+    df = completar_desc_clase_manual(df, aplicar_manual_final=False)
 
     # La carga manual se integra al presupuesto programado/preventivo.
     if "ORIGEN_PRESUPUESTO" in df.columns:
@@ -3186,12 +3493,9 @@ if "manual_editor_version" not in st.session_state:
 
 manual_base = recalcular_mes_editor_manual(st.session_state["manual_editor_data"])
 
-# Opciones de sistema para la carga manual: se integran a los sistemas existentes,
-# no se crea categoría MANUAL para gráficos ni presupuesto.
-opciones_sistema_manual = [s for s in sistemas if limpiar_texto(s) not in ["", "PM MECANICO", "CORRECTIVO / BACKLOG", "SOLDADURA / CONSUMIBLES"]]
-if not opciones_sistema_manual:
-    opciones_sistema_manual = [s for s in sistemas if limpiar_texto(s) != ""]
-opciones_sistema_manual = [""] + sorted(set(opciones_sistema_manual))
+# Opciones para carga manual amarradas al filtro actual.
+opciones_equipo_manual = opciones_equipo_manual_actuales()
+opciones_sistema_manual = opciones_sistema_manual_actuales()
 
 # IMPORTANTE:
 # El editor manual va dentro de un formulario para que Streamlit no recargue
@@ -3206,10 +3510,23 @@ with st.form("form_trabajos_manuales", clear_on_submit=False):
         key=f"trabajos_manuales_editor_{st.session_state['manual_editor_version']}",
         disabled=["MES_PRESUPUESTO_NOMBRE", "ORIGEN_PRESUPUESTO", "TIPO_MANTENIMIENTO"],
         column_config={
+            "EQUIPO": st.column_config.SelectboxColumn(
+                "EQUIPO",
+                options=opciones_equipo_manual,
+                help="Elige un equipo de la lista. Si no existe, elige OTRO / MANUAL."
+            ),
+            "EQUIPO_MANUAL": st.column_config.TextColumn(
+                "EQUIPO_MANUAL",
+                help="Usar solo si en EQUIPO elegiste OTRO / MANUAL. Ejemplo: PAT10, CAMIONETA, GRUA, etc."
+            ),
+            "FLOTA": st.column_config.TextColumn(
+                "FLOTA",
+                help="Se llena automático para palas conocidas. Si el equipo es manual, puedes escribir la flota."
+            ),
             "SISTEMA": st.column_config.SelectboxColumn(
                 "SISTEMA",
                 options=opciones_sistema_manual,
-                help="Selecciona el sistema al que pertenece la línea manual. No se usará categoría MANUAL."
+                help="Solo muestra sistemas incluidos en el filtro actual. No se usará categoría MANUAL."
             ),
             "FECHA_CAMBIO": st.column_config.DateColumn(
                 "FECHA_CAMBIO",
@@ -3239,6 +3556,19 @@ with st.form("form_trabajos_manuales", clear_on_submit=False):
                 "TIPO_REPARACION",
                 options=["", "INTERNA", "EXTERNA"]
             ),
+            "DESC_CLASE_COSTO_FINAL": st.column_config.SelectboxColumn(
+                "DESC_CLASE_COSTO_FINAL",
+                options=opciones_desc_clase_costo_manual,
+                help="Elige una descripción de la lista. Si no existe, elige OTRA / MANUAL."
+            ),
+            "DESC_CLASE_COSTO_MANUAL": st.column_config.TextColumn(
+                "DESC_CLASE_COSTO_MANUAL",
+                help="Usar solo si en DESC_CLASE_COSTO_FINAL elegiste OTRA / MANUAL."
+            ),
+            "CLASE_COSTO_FINAL": st.column_config.TextColumn(
+                "CLASE_COSTO_FINAL",
+                help="Se completa automático al elegir una descripción. Si es manual, puedes colocar el número."
+            ),
             "COSTO_ESTIMADO": st.column_config.NumberColumn(
                 "COSTO_ESTIMADO",
                 min_value=0.0,
@@ -3251,7 +3581,7 @@ with st.form("form_trabajos_manuales", clear_on_submit=False):
     col_manual_1, col_manual_2, col_manual_3, col_manual_4 = st.columns([1.1, 1.3, 1, 4])
 
     with col_manual_1:
-        actualizar_manual = st.form_submit_button("Actualizar mes")
+        actualizar_manual = st.form_submit_button("Actualizar mes / descripción")
 
     with col_manual_2:
         copiar_ultima_manual = st.form_submit_button("Copiar última línea abajo")
@@ -3296,7 +3626,7 @@ if agregar_manual:
         ejecutar_rerun()
     else:
         st.session_state["manual_editor_data"] = df_para_agregar.copy()
-        st.warning("No se agregó nada. Completa como mínimo EQUIPO, FECHA_PRESUPUESTO y COSTO_ESTIMADO mayor a cero.")
+        st.warning("No se agregó nada. Completa EQUIPO/SISTEMA según el filtro actual, FECHA_PRESUPUESTO y COSTO_ESTIMADO mayor a cero.")
 
 if limpiar_manual:
     st.session_state["manual_editor_data"] = base_editor_manual_vacia()
@@ -3428,6 +3758,9 @@ else:
             data_export["MES_PRESUPUESTO"] == mes
         ].copy()
 
+# IMPORTANTE: el filtro lateral también debe mandar sobre el presupuesto final.
+# Esto evita que líneas manuales antiguas de otro equipo/sistema sigan apareciendo abajo.
+data_export = aplicar_filtro_equipo_sistema(data_export)
 data_export = aplicar_filtro_definicion(data_export)
 
 # No mostrar ni exportar líneas con costo cero.
@@ -3475,6 +3808,7 @@ else:
         lineas_presupuesto_grafico["AÑO_PRESUPUESTO"] == anio
     ].copy()
 
+lineas_grafico_anio = aplicar_filtro_equipo_sistema(lineas_grafico_anio)
 lineas_grafico_anio = aplicar_filtro_definicion(lineas_grafico_anio)
 if not lineas_grafico_anio.empty and "COSTO_ESTIMADO" in lineas_grafico_anio.columns:
     lineas_grafico_anio["COSTO_ESTIMADO"] = lineas_grafico_anio["COSTO_ESTIMADO"].apply(limpiar_monto)
@@ -3629,81 +3963,27 @@ st.markdown("""
 
 
 # ==========================================================
-# CORRECCIÓN VISUAL PARA ESCRITURA EN DATA_EDITOR
-# Mantiene la tabla oscura y solo fuerza letras visibles.
-# También elimina la franja negra de la celda activa haciéndola transparente.
+# CORRECCIÓN FINAL DATA_EDITOR: mantener legible al escribir
 # ==========================================================
 st.markdown("""
 <style>
-/* Celda activa / editor interno del st.data_editor */
+/* Regla final: si aparece editor flotante, texto oscuro sobre fondo claro para no perder lo escrito. */
 div[data-testid="stDataEditor"] input,
 div[data-testid="stDataEditor"] textarea,
 div[data-testid="stDataEditor"] [contenteditable="true"],
 div[data-testid="stDataEditor"] [data-baseweb="input"] input,
 div[data-testid="stDataEditor"] [data-baseweb="textarea"] textarea,
-div[data-testid="stDataEditor"] .gdg-input,
-div[data-testid="stDataEditor"] .gdg-input input,
-div[data-testid="stDataEditor"] .gdg-input textarea,
-div[data-testid="stDataEditor"] .dvn-textarea,
-div[data-testid="stDataEditor"] .dvn-textarea textarea,
-.gdg-input,
-.gdg-input input,
-.gdg-input textarea,
-.dvn-textarea,
-.dvn-textarea textarea,
+.gdg-input, .gdg-input input, .gdg-input textarea,
+.dvn-textarea, .dvn-textarea textarea,
 .glide-data-grid-overlay-editor,
 .glide-data-grid-overlay-editor input,
 .glide-data-grid-overlay-editor textarea {
-    background: transparent !important;
-    background-color: transparent !important;
-    color: #E9FBFF !important;
-    -webkit-text-fill-color: #E9FBFF !important;
-    caret-color: #00D1B2 !important;
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
+    caret-color: #0F172A !important;
     opacity: 1 !important;
-    border-color: #00D1B2 !important;
-    box-shadow: none !important;
     text-shadow: none !important;
-}
-
-/* Si el navegador/Glide dibuja una caja propia encima de la celda */
-div[class*="gdg"] input,
-div[class*="gdg"] textarea,
-div[class*="dvn"] input,
-div[class*="dvn"] textarea {
-    background: transparent !important;
-    background-color: transparent !important;
-    color: #E9FBFF !important;
-    -webkit-text-fill-color: #E9FBFF !important;
-    caret-color: #00D1B2 !important;
-}
-
-/* Selectbox dentro del editor */
-div[data-testid="stDataEditor"] [data-baseweb="select"] > div,
-div[data-testid="stDataEditor"] [data-baseweb="select"] span,
-div[data-testid="stDataEditor"] [data-baseweb="select"] div {
-    background-color: rgba(17, 40, 49, 0.95) !important;
-    color: #E9FBFF !important;
-    -webkit-text-fill-color: #E9FBFF !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# ==========================================================
-# ÚLTIMO REFUERZO CSS: CELDA ACTIVA SIN FRANJA NEGRA
-# ==========================================================
-st.markdown("""
-<style>
-.gdg-input, .gdg-input input, .gdg-input textarea,
-.dvn-textarea, .dvn-textarea textarea,
-.glide-data-grid-overlay-editor, .glide-data-grid-overlay-editor input, .glide-data-grid-overlay-editor textarea,
-div[data-testid="stDataEditor"] input, div[data-testid="stDataEditor"] textarea {
-    background: transparent !important;
-    background-color: transparent !important;
-    color: #E9FBFF !important;
-    -webkit-text-fill-color: #E9FBFF !important;
-    caret-color: #00D1B2 !important;
-    box-shadow: none !important;
 }
 </style>
 """, unsafe_allow_html=True)

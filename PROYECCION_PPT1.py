@@ -2248,6 +2248,31 @@ columnas_actualizables = [
     "DESC_CLASE_COSTO_SOLDADURAS_FUNDENTES_ACCES",
 ]
 
+# En Streamlit Cloud/Pandas nuevo no se puede asignar texto vacío a columnas numéricas.
+# Por eso se normalizan los valores guardados antes de aplicarlos al DataFrame.
+columnas_numericas_actualizables = [
+    "COSTO_REPARACION",
+    "COSTO_COMPONENTE_NUEVO",
+    "COSTO_MATERIAL_REP_INTERNA",
+    "LEAD_TIME_COMPRA_DIAS",
+    "TIEMPO_REPARACION_DIAS",
+    "COSTO_PLACAS_PERF_ESTRUC",
+    "COSTO_SOLDADURAS_FUNDENTES_ACCES",
+]
+
+
+def normalizar_valor_cambio(col, valor):
+    if col in columnas_numericas_actualizables:
+        return limpiar_monto(valor)
+
+    if col.startswith("CLASE_"):
+        return limpiar_codigo(valor)
+
+    if col in ["DECISION_PRESUPUESTO", "TIPO_REPARACION"]:
+        return limpiar_texto(valor).upper()
+
+    return limpiar_texto(valor)
+
 
 def cargar_cambios_guardados():
     if "cambios_eventos" in st.session_state:
@@ -2323,7 +2348,15 @@ def aplicar_cambios_guardados(df):
 
         for col, valor in valores.items():
             if col in df.columns:
-                df.loc[mask, col] = valor
+                valor_limpio = normalizar_valor_cambio(col, valor)
+
+                if col in columnas_numericas_actualizables:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0).astype(float)
+                else:
+                    # Evita errores de Pandas al colocar texto en columnas con dtype rígido.
+                    df[col] = df[col].astype("object")
+
+                df.loc[mask, col] = valor_limpio
 
     return df
 
@@ -2350,7 +2383,7 @@ def guardar_cambios_editor(df_editado):
 
         for col in columnas_actualizables:
             if col in df_editado.columns:
-                valores[col] = row.get(col, "")
+                valores[col] = normalizar_valor_cambio(col, row.get(col, ""))
 
         st.session_state["cambios_eventos"][id_evento] = valores
         contador += 1
